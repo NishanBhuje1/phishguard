@@ -2,6 +2,9 @@
 backend/.env
 backend/phishguard.db
 
+# Project notes
+PROJECT.md
+
 # Python
 __pycache__/
 *.pyc
