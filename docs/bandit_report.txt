@@ -1,0 +1,100 @@
+================================================================================
+PhishGuard — Bandit SAST Report
+Tool: Bandit 1.9.4
+Date: 2026-05-09
+Scope: backend/ (excluding backend/ml/)
+Command: bandit -r . -f txt -o ../docs/bandit_report.txt --exclude ./ml
+================================================================================
+
+Run started: 2026-05-09 12:07:32 UTC
+
+Test results:
+
+>> Issue: [B105:hardcoded_password_string] Possible hardcoded password: 'bearer'
+   Severity: Low   Confidence: Medium
+   CWE: CWE-259
+   Location: .\routers\auth.py:67:38
+   Code: return {"temp_token": temp_token, "token_type": "bearer"}
+
+--------------------------------------------------
+
+>> Issue: [B105:hardcoded_password_string] Possible hardcoded password: 'bearer'
+   Severity: Low   Confidence: Medium
+   CWE: CWE-259
+   Location: .\routers\auth.py:84:42
+   Code: return {"access_token": access_token, "token_type": "bearer"}
+
+--------------------------------------------------
+
+Code scanned:
+    Total lines of code: 415
+    Total lines skipped (#nosec): 0
+
+Run metrics:
+    Total issues (by severity):
+        Low: 2   Medium: 0   High: 0
+    Total issues (by confidence):
+        Medium: 2   High: 0   Low: 0
+
+Files scanned:
+    config.py, database.py, main.py
+    middleware/rate_limiter.py
+    models/scan.py, models/user.py
+    routers/auth.py, routers/scan.py, routers/admin.py
+    services/auth_service.py, services/logger.py,
+    services/ml_classifier.py, services/url_analyzer.py
+
+================================================================================
+FINDING ANALYSIS & DECISIONS
+================================================================================
+
+FINDING: B105 — Hardcoded Password String (#1)
+FILE: routers/auth.py
+LINE: 67
+SEVERITY: Low
+CONFIDENCE: Medium
+DESCRIPTION: Bandit flagged the string "bearer" in the dict key "token_type"
+             as a potential hardcoded password.
+DECISION: Accepted Risk
+REASON: This is a confirmed false positive. "bearer" is the standardised
+        OAuth 2.0 / RFC 6750 token_type value returned in authentication
+        responses (e.g., {"access_token": "...", "token_type": "bearer"}).
+        It is not a secret, credential, or password. It is a public protocol
+        label required by RFC 6749 Section 5.1. No credential information is
+        hardcoded in this file; the actual JWT secret is loaded exclusively
+        from the SECRET_KEY environment variable via config.py.
+
+--------------------------------------------------
+
+FINDING: B105 — Hardcoded Password String (#2)
+FILE: routers/auth.py
+LINE: 84
+SEVERITY: Low
+CONFIDENCE: Medium
+DESCRIPTION: Bandit flagged the string "bearer" in the dict key "token_type"
+             in the verify-2fa response as a potential hardcoded password.
+DECISION: Accepted Risk
+REASON: Identical to Finding #1. Both occurrences are standard OAuth 2.0
+        token_type labels, not secrets. Bandit's B105 rule is known to
+        produce false positives on the literal string "bearer" in API
+        response dictionaries. The JWT signing secret is never hardcoded —
+        it is always read from the SECRET_KEY environment variable.
+
+================================================================================
+OVERALL ASSESSMENT
+================================================================================
+
+High severity findings: 0
+Medium severity findings: 0
+Low severity findings: 2 (both accepted as false positives)
+
+No genuine security issues were identified by Bandit static analysis.
+The codebase follows secure coding practices:
+  - No hardcoded secrets (all credentials in .env via config.py)
+  - No SQL injection surface (SQLAlchemy ORM with parameterised queries)
+  - No use of dangerous functions (eval, exec, subprocess with shell=True)
+  - No insecure deserialisation
+  - No weak cryptography (bcrypt cost 12, JWT HS256, pyotp TOTP)
+
+Conclusion: PASS — No code changes required based on Bandit findings.
+================================================================================

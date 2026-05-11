@@ -1,0 +1,35 @@
+# Environment
+backend/.env
+backend/phishguard.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# ML artifacts (too large for GitHub)
+backend/ml/model.pkl
+backend/ml/dataset.csv
+
+# Node
+frontend/node_modules/
+frontend/dist/
+node_modules/
+package-lock.json
+package.json
+phish-guard/
+.claude/
+verify_results.mjs
+verify_ui.mjs
+
+# OS
+.DS_Store
+Thumbs.db

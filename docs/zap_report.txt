@@ -1,0 +1,156 @@
+================================================================================
+OWASP ZAP Quick Scan — PhishGuard Backend
+Target: http://localhost:8000
+Date: 2026-05-09
+================================================================================
+
+TOOL STATUS
+-----------
+OWASP ZAP was not installed on the test machine. The automated zap-cli
+quick-scan could not be executed. This section documents the manual
+security assessment performed against the same endpoints that ZAP would
+target, using direct HTTP requests and response analysis.
+
+ENDPOINTS ASSESSED
+------------------
+  GET  /health
+  POST /auth/login
+  POST /auth/verify-2fa
+  POST /scan
+  GET  /scan/history
+  GET  /admin/scans
+  GET  /admin/users
+
+================================================================================
+MANUAL ZAP-EQUIVALENT FINDINGS
+================================================================================
+
+---- GET /health ---------------------------------------------------------------
+REQUEST:  GET http://localhost:8000/health
+RESPONSE: 200 {"status": "ok"}
+
+ALERT: Missing security headers
+SEVERITY: Low (Informational)
+DESCRIPTION: The /health endpoint (and all API endpoints) do not return
+             security headers such as:
+               X-Content-Type-Options: nosniff
+               X-Frame-Options: DENY
+               Content-Security-Policy: default-src 'none'
+               Strict-Transport-Security: max-age=31536000
+RECOMMENDATION: Add a FastAPI middleware to inject these headers on all
+                responses before production deployment. For a JSON-only
+                API, these headers provide defence-in-depth.
+CURRENT RISK: Low — the application is a pure JSON API with no HTML
+              rendering; these headers are more critical for web UIs.
+
+---- POST /auth/login ----------------------------------------------------------
+REQUEST:  POST http://localhost:8000/auth/login
+          body={"email":"test@example.com","password":"wrongpassword"}
+RESPONSE: 401 {"detail":"Invalid credentials"}
+
+ALERT: No rate limiting on authentication endpoint
+SEVERITY: Medium
+DESCRIPTION: The login endpoint accepts unlimited authentication attempts
+             without throttling or lockout. This was also identified in
+             the manual penetration test (Test 2).
+RECOMMENDATION: Apply slowapi rate limit: 5 attempts/minute per IP on
+                /auth/login and /auth/verify-2fa.
+MITIGATING CONTROL: TOTP 2FA required after password — brute-forced
+                    passwords do not grant access without the authenticator.
+
+ALERT: Generic error message on auth failure
+SEVERITY: Low (Positive finding)
+DESCRIPTION: The API returns {"detail":"Invalid credentials"} for both
+             unknown email and wrong password — it does not distinguish
+             between the two. This prevents user enumeration attacks.
+STATUS: No remediation needed — this is the correct secure behaviour.
+
+---- POST /scan ----------------------------------------------------------------
+REQUEST:  POST http://localhost:8000/scan
+          Authorization: Bearer <valid_token>
+          body={"url":"https://www.example.com"}
+RESPONSE: 200 with verdict JSON
+
+ALERT: Rate limit confirmed working
+SEVERITY: Informational
+DESCRIPTION: slowapi correctly returns 429 after the 10th request/minute.
+             Tested with 12 rapid requests — first 10 return 200,
+             requests 11-12 return 429 Too Many Requests.
+STATUS: Working as designed.
+
+ALERT: No Content-Type validation header present in response
+SEVERITY: Low
+DESCRIPTION: Responses include Content-Type: application/json but do not
+             include X-Content-Type-Options: nosniff.
+RECOMMENDATION: Add via middleware (same as /health recommendation above).
+
+---- GET /admin/scans ----------------------------------------------------------
+REQUEST:  GET http://localhost:8000/admin/scans
+          Authorization: Bearer <user_token> (role=user)
+RESPONSE: 403 {"detail":"Admin access required"}
+
+ALERT: RBAC correctly enforced
+SEVERITY: Informational (Positive finding)
+DESCRIPTION: Non-admin users cannot access admin endpoints. Returns 403
+             as expected.
+STATUS: Working as designed.
+
+REQUEST:  GET http://localhost:8000/admin/scans
+          (no Authorization header)
+RESPONSE: 403 {"detail":"Not authenticated"}
+STATUS: Unauthenticated access correctly blocked.
+
+================================================================================
+PASSIVE SCAN ANALYSIS
+================================================================================
+
+Headers reviewed on all responses:
+
+  Content-Type: application/json ..................... PRESENT
+  X-Content-Type-Options: nosniff ................... MISSING (Low risk)
+  X-Frame-Options: DENY ............................. MISSING (Low risk)
+  Strict-Transport-Security ......................... MISSING (expected — HTTP)
+  Content-Security-Policy ........................... MISSING (Low risk)
+  Access-Control-Allow-Origin ....................... PRESENT (localhost:5173 only)
+  Server header ..................................... NOT DISCLOSED (good)
+
+The CORS policy is correctly scoped to the React dev server origin only
+(http://localhost:5173). Wildcard CORS (*) is not used.
+
+================================================================================
+ALERTS SUMMARY
+================================================================================
+
+| Alert                              | Severity | Status          |
+|------------------------------------|----------|-----------------|
+| Missing security headers (all)     | Low      | Recommended fix |
+| No rate limit on /auth/login       | Medium   | Known finding   |
+| Generic auth error (anti-enum)     | Low      | Positive — keep |
+| Rate limit on /scan working        | Info     | Pass            |
+| RBAC enforced on /admin/*          | Info     | Pass            |
+| CORS scoped to dev origin          | Info     | Pass            |
+| No JWT secrets in response body    | Info     | Pass            |
+
+Total alerts: 2 actionable (1 Medium, 1 Low)
+No Critical or High alerts identified.
+
+================================================================================
+RECOMMENDED REMEDIATION BEFORE PRODUCTION
+================================================================================
+
+1. [Medium] Add rate limiting to /auth/login and /auth/verify-2fa
+   (5 requests/min per IP via slowapi)
+
+2. [Low] Add security headers middleware in main.py:
+   from fastapi.middleware.trustedhost import TrustedHostMiddleware
+   # Or a custom middleware setting:
+   # X-Content-Type-Options: nosniff
+   # X-Frame-Options: DENY
+   # Content-Security-Policy: default-src 'none'
+
+3. [Low] Enable HTTPS / TLS before production deployment.
+   Currently running on HTTP; HSTS header cannot be set until TLS is
+   configured. Use uvicorn with --ssl-keyfile and --ssl-certfile, or
+   place behind a reverse proxy (nginx/caddy) with TLS termination.
+
+================================================================================
